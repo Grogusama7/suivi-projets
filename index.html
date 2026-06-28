@@ -32,6 +32,7 @@
 [data-theme="dark"] .s-encours{background:#1f3245;color:#7db4e6}
 [data-theme="dark"] .s-bloque{background:#3a2c44;color:#c0a8d8}
 [data-theme="dark"] .s-fait{background:#1e3a2c;color:#6cc295}
+[data-theme="dark"] .s-annule{background:#2a2f35;color:#7c8896}
 [data-theme="dark"] .tag.rec{background:#1f3245;color:#7db4e6}
 [data-theme="dark"] .tag.block{background:#3d2722;color:#e09080}
 [data-theme="dark"] .tag.wait{background:#3a3320;color:#d4b96a}
@@ -46,6 +47,7 @@
 [data-theme="dark"] .pmile.soon{background:#33291a;color:#d8a94e}
 [data-theme="dark"] .pmile.done{background:#1e3a2c;color:#6cc295}
 [data-theme="dark"] .pmile.late{background:#37211d;color:#e08070}
+[data-theme="dark"] .pmile.cancel{background:#2a2f35;color:#7c8896}
 [data-theme="dark"] .lib-chip,[data-theme="dark"] .nlink{background:#1f3245;color:#7db4e6}
 [data-theme="dark"] .pbar{background:#2a3441}
 [data-theme="dark"] .loadbar{background:#2a3441}
@@ -97,6 +99,7 @@ h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:1.5px;color:var(--
 .tag{display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;letter-spacing:.5px;text-transform:uppercase;font-family:var(--mono)}
 .s-afaire{background:#e8ecf1;color:#5a6677}.s-encours{background:#dbe9f6;color:#2b5b8a}
 .s-bloque{background:#efe1f3;color:var(--blocked)}.s-fait{background:#dceee2;color:var(--ok)}
+.s-annule{background:#ececec;color:#9aa3ad;text-decoration:line-through}
 .tag.late{background:var(--accent);color:#fff}.tag.soon{background:#f6ecc9;color:var(--warn)}
 .tag.dep{background:#e4e0d2;color:#5b626e}
 .action .acts{display:flex;gap:6px;align-self:start}
@@ -252,6 +255,7 @@ footer{text-align:center;font-family:var(--mono);font-size:11px;color:var(--ink-
 .pmile{font-size:11px;font-family:var(--mono);padding:3px 9px;border-radius:20px;background:#eceae0;color:var(--ink-soft)}
 .pmile.soon{background:var(--accent-soft);color:var(--accent)}
 .pmile.done{background:#dceee2;color:var(--ok)}
+.pmile.cancel{background:#ececec;color:#9aa3ad;text-decoration:line-through}
 .pcard .ph{display:flex;align-items:center;gap:8px}
 .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .dot-green{background:#2f7a52}.dot-orange{background:#d98324}.dot-red{background:#c0392b}.dot-gray{background:#9aa7b8}.dot-done{background:#2b5b8a}
@@ -982,8 +986,8 @@ function projHealth(p){
   const late=open.filter(a=>{const d=daysTo(a.ech);return d!==null&&d<0});
   const critical=open.filter(a=>isCriticalLate(a));
   const js=jalons.filter(j=>j.projet===p);
-  const jalonLate=js.some(j=>j.statut!=="Atteint"&&daysTo(j.date)<0);
-  const jalonSoon=js.some(j=>j.statut!=="Atteint"&&daysTo(j.date)>=0&&daysTo(j.date)<=7);
+  const jalonLate=js.some(j=>j.statut!=="Atteint"&&j.statut!=="Annulé"&&daysTo(j.date)<0);
+  const jalonSoon=js.some(j=>j.statut!=="Atteint"&&j.statut!=="Annulé"&&daysTo(j.date)>=0&&daysTo(j.date)<=7);
   const meta=projMeta[p]||{};
   if(meta.statut==="Suspendu")return{c:"gray",t:"Suspendu"};
   if(meta.statut==="Clôturé")return{c:"done",t:"Clôturé"};
@@ -1005,7 +1009,7 @@ function renderProjOverview(){
     const enc=open.filter(a=>a.statut==="En cours").length;
     const nextA=open.filter(a=>a.ech).sort((a,b)=>new Date(a.ech)-new Date(b.ech))[0];
     const js=jalons.filter(j=>j.projet===p).sort((a,b)=>new Date(a.date)-new Date(b.date));
-    const milesHtml=js.map(j=>{const d=daysTo(j.date);let c="";if(j.statut==="Atteint")c="done";else if(d!==null&&d<0)c="late";else if(d!==null&&d<=14)c="soon";
+    const milesHtml=js.map(j=>{const d=daysTo(j.date);let c="";if(j.statut==="Atteint")c="done";else if(j.statut==="Annulé")c="cancel";else if(d!==null&&d<0)c="late";else if(d!==null&&d<=14)c="soon";
       return `<span class="pmile ${c}" title="${esc(j.label)} — ${fr(j.date)}">◆ ${esc(j.label.split('—')[0].trim())} · ${fr(j.date)}</span>`;}).join("");
     const h=projHealth(p);
     // suivi chiffré adapté au type de projet
@@ -1034,7 +1038,7 @@ function renderProjOverview(){
     if(meta.end)datesLine.push("Fin "+fr(meta.end));
     // alertes
     const alerts=[];
-    if(js.some(j=>j.statut!=="Atteint"&&daysTo(j.date)<0))alerts.push("Jalon dépassé");
+    if(js.some(j=>j.statut!=="Atteint"&&j.statut!=="Annulé"&&daysTo(j.date)<0))alerts.push("Jalon dépassé");
     if(late>0)alerts.push(late+" action(s) en retard");
     if(blk>0)alerts.push(blk+" bloquée(s)");
     return `<div class="pcard health-${h.c}">
@@ -1192,11 +1196,12 @@ function renderProjet(){
 
   // jalons avec fichiers libératoires
   const jalonsHtml=js.length?js.map(j=>{
-    const d=daysTo(j.date);const st=j.statut==="Atteint"?"Atteint":(d!==null&&d<0?"En retard":"À venir");
-    const stc=j.statut==="Atteint"?"s-fait":(d!==null&&d<0?"s-bloque":"s-afaire");
+    if(editingJalon&&editingJalon.id===j.id&&editingJalon.ctx==='detail')
+      return `<tr><td><input id="jeLabel" value="${esc(j.label)}" style="width:100%"></td><td><input type="date" id="jeDate" value="${j.date}"></td><td><select id="jeStatut">${JSTATUTS.map(s=>`<option ${s===j.statut?"selected":""}>${s}</option>`).join("")}</select></td><td><button class="iconbtn" onclick="saveEditJalon()">✓ Enregistrer</button> <button class="iconbtn" onclick="cancelEditJalon()">Annuler</button></td></tr>`;
+    const jv=jalonView(j);
     const libDocs=docsOf(p,"Libératoire").filter(doc=>doc.jalon===j.id);
     const libHtml=libDocs.length?`<div class="lib-files">${libDocs.map(doc=>`<span class="lib-chip" onclick="openDoc('${doc.id}')">📎 ${esc(doc.label)}</span>`).join("")}</div>`:`<span class="hint" style="margin:0">aucun fichier libératoire</span>`;
-    return `<tr><td><b>${esc(j.label)}</b></td><td>${fr(j.date)}</td><td><span class="tag ${stc}">${st}</span></td><td>${libHtml} <button class="iconbtn" onclick="openDocNew('${p.replace(/'/g,"\\'")}','Libératoire','${j.id}')">+ fichier</button></td></tr>`;
+    return `<tr><td><b>${esc(j.label)}</b></td><td>${fr(j.date)}</td><td><span class="tag ${jv.cls}">${jv.label}</span></td><td>${libHtml} <button class="iconbtn" title="Modifier le jalon" onclick="startEditJalon('${j.id}','detail')">✎</button> <button class="iconbtn" onclick="openDocNew('${p.replace(/'/g,"\\'")}','Libératoire','${j.id}')">+ fichier</button></td></tr>`;
   }).join(""):`<tr><td colspan="4" class="muted">Aucun jalon. Ajoutez-en via « Gérer projets &amp; jalons ».</td></tr>`;
 
   // actions associées
@@ -1337,7 +1342,7 @@ function renderProjGantt(p){
   // générateurs de lignes
   const mileRow=(j)=>{
     const mi=idx(j.date);const inRange=mi>=0&&mi<totalDays;
-    const dd=daysTo(j.date);const col=j.statut==="Atteint"?"var(--ok)":(dd<0?"var(--p-crit)":"var(--accent)");
+    const dd=daysTo(j.date);const col=j.statut==="Atteint"?"var(--ok)":(j.statut==="Annulé"?"var(--p-basse)":(dd<0?"var(--p-crit)":"var(--accent)"));
     const pos=mi*CW+CW/2-7;
     return `<tr class="pg-milerow"><td class="pgl" title="${esc(j.label)}"><b>◆ ${esc(j.label)}</b><div class="pgl-sub">${fmt(j.date)}</div></td><td colspan="${totalDays}" class="pg-track">${inRange?`<div class="pg-mile" style="left:${pos}px;border-bottom-color:${col}" title="${esc(j.label)} — ${fmt(j.date)}"></div>`:""}<div class="pg-cells">${cellsRow()}</div></td></tr>`;
   };
@@ -1866,13 +1871,55 @@ function renderProjList(){
     const js=jalons.filter(j=>j.projet===p);
     return `<div style="margin-bottom:14px;padding:10px;border:1px solid var(--line);border-radius:8px">
       <div style="display:flex;gap:8px;align-items:center"><b style="flex:1">${esc(p)}</b><button class="iconbtn" onclick="delProj(${pi})">Supprimer le projet</button></div>
-      <div style="margin-top:8px;font-size:13px">${js.map(j=>`<div class="sub-item">◆ ${esc(j.label)} — ${new Date(j.date).toLocaleDateString("fr-FR")} <span class="tag ${j.statut==='Atteint'?'s-fait':'s-afaire'}">${j.statut}</span> <button class="iconbtn" style="margin-left:auto;padding:1px 7px" onclick="delJalon('${j.id}')">✕</button></div>`).join("")||'<span class="hint">Aucun jalon</span>'}</div>
+      <div style="margin-top:8px;font-size:13px">${js.map(j=>{
+        if(editingJalon&&editingJalon.id===j.id&&editingJalon.ctx==='modal')return `<div class="sub-edit" style="margin-top:4px;gap:6px;align-items:center;flex-wrap:wrap">${jalonEditRow(j,'modal')}</div>`;
+        const jv=jalonView(j);
+        return `<div class="sub-item">◆ ${esc(j.label)} — ${new Date(j.date).toLocaleDateString("fr-FR")} <span class="tag ${jv.cls}">${jv.label}</span> <button class="iconbtn" style="margin-left:auto;padding:1px 7px" title="Modifier" onclick="startEditJalon('${j.id}','modal')">✎</button> <button class="iconbtn" style="padding:1px 7px" title="Supprimer" onclick="delJalon('${j.id}')">✕</button></div>`;
+      }).join("")||'<span class="hint">Aucun jalon</span>'}</div>
       <div class="sub-edit" style="margin-top:8px"><input id="jl_${pi}" placeholder="Libellé jalon" style="flex:2"><input type="date" id="jd_${pi}" style="flex:1"><button class="iconbtn" onclick="addJalon(${pi})">+ Jalon</button></div>
     </div>`;}).join("");}
 function addProj(){const v=document.getElementById("newProj").value.trim();if(!v)return;projets.push(v);document.getElementById("newProj").value="";save();renderProjList()}
 function delProj(i){if(confirm("Supprimer ce projet ? Les jalons liés seront retirés.")){const p=projets[i];jalons=jalons.filter(j=>j.projet!==p);projets.splice(i,1);save();renderProjList()}}
 function addJalon(pi){const l=document.getElementById("jl_"+pi).value.trim(),d=document.getElementById("jd_"+pi).value;if(!l||!d){alert("Libellé et date requis.");return}jalons.push({id:uid(),projet:projets[pi],label:l,date:d,statut:"À venir"});save();renderProjList()}
-function delJalon(id){jalons=jalons.filter(j=>j.id!==id);save();renderProjList()}
+function delJalon(id){if(!confirm("Supprimer ce jalon ?"))return;jalons=jalons.filter(j=>j.id!==id);if(editingJalon&&editingJalon.id===id)editingJalon=null;save();rerenderJalonHosts()}
+// états possibles d'un jalon ; « En retard » reste calculé (date dépassée, ni atteint ni annulé)
+const JSTATUTS=["À venir","En cours","Atteint","Annulé"];
+function jalonView(j){
+  const d=daysTo(j.date);
+  const late=(j.statut!=="Atteint"&&j.statut!=="Annulé"&&d!==null&&d<0);
+  if(j.statut==="Atteint")return{label:"Atteint",cls:"s-fait",late:false,d};
+  if(j.statut==="Annulé")return{label:"Annulé",cls:"s-annule",late:false,d};
+  if(late)return{label:"En retard",cls:"s-bloque",late:true,d};
+  if(j.statut==="En cours")return{label:"En cours",cls:"s-encours",late:false,d};
+  return{label:"À venir",cls:"s-afaire",late:false,d};
+}
+// édition inline d'un jalon (titre / date / état) — partagée modale de gestion + fiche détail
+let editingJalon=null; // {id, ctx:'modal'|'detail'}
+function rerenderJalonHosts(){
+  const ov=document.getElementById("overlayP");
+  if(ov&&ov.classList.contains("open"))renderProjList();
+  const dt=document.getElementById("v-projet-detail");
+  if(dt&&dt.classList.contains("active"))renderProjet();
+}
+function startEditJalon(id,ctx){editingJalon={id,ctx};rerenderJalonHosts();}
+function cancelEditJalon(){editingJalon=null;rerenderJalonHosts();}
+function saveEditJalon(){
+  if(!editingJalon)return;
+  const j=jalons.find(x=>x.id===editingJalon.id);if(!j){editingJalon=null;return;}
+  const l=document.getElementById("jeLabel").value.trim();
+  const d=document.getElementById("jeDate").value;
+  const s=document.getElementById("jeStatut").value;
+  if(!l||!d){alert("Libellé et date requis.");return;}
+  j.label=l;j.date=d;j.statut=s;
+  editingJalon=null;save();rerenderJalonHosts();
+}
+function jalonEditRow(j,ctx){
+  return `<input id="jeLabel" value="${esc(j.label)}" placeholder="Libellé jalon" style="flex:2;min-width:120px">`+
+    `<input type="date" id="jeDate" value="${j.date}" style="flex:1">`+
+    `<select id="jeStatut" style="flex:1">${JSTATUTS.map(s=>`<option ${s===j.statut?"selected":""}>${s}</option>`).join("")}</select>`+
+    `<button class="iconbtn" title="Enregistrer" onclick="saveEditJalon()">✓</button>`+
+    `<button class="iconbtn" title="Annuler" onclick="cancelEditJalon()">✕</button>`;
+}
 const STATUTS=["À faire","En cours","Bloqué","Fait"];
 let kanbanDoneOpen=false;
 function toggleKanbanDone(){kanbanDoneOpen=!kanbanDoneOpen;renderKanban()}
@@ -2268,7 +2315,7 @@ function buildReport(){
     const js=jalons.filter(j=>j.projet===p).sort((a,b)=>new Date(a.date)-new Date(b.date));
     // top actions ouvertes par priorité puis échéance
     const top=open.slice().sort((a,b)=>PRIO_ORDER[a.prio]-PRIO_ORDER[b.prio]||(new Date(a.ech||8e15)-new Date(b.ech||8e15))).slice(0,8);
-    const milesRows=js.map(j=>{const d=daysTo(j.date);const st=j.statut==="Atteint"?"Atteint":(d!==null&&d<0?"En retard":"À venir");
+    const milesRows=js.map(j=>{const st=jalonView(j).label;
       return `<tr><td>${esc(j.label)}</td><td>${fr(j.date)}</td><td>${st}</td></tr>`;}).join("")||`<tr><td colspan="3" class="muted">Aucun jalon</td></tr>`;
     const actRows=top.map(a=>{const d=daysTo(a.ech);const retard=(d!==null&&d<0)?` (retard ${-d} j)`:"";
       return `<tr><td>${esc(a.title)}</td><td>${esc(a.resp)||"—"}</td><td>${a.prio}</td><td>${a.statut}</td><td>${fr(a.ech)}${retard}</td></tr>`;}).join("")||`<tr><td colspan="5" class="muted">Aucune action ouverte</td></tr>`;
@@ -2342,8 +2389,8 @@ function buildProjReport(p){
   const js=jalons.filter(j=>j.projet===p).sort((a,b)=>new Date(a.date)-new Date(b.date));
   const today=new Date();today.setHours(0,0,0,0);
   // livraisons / jalons à venir
-  const jalonsFuturs=js.filter(j=>j.statut!=="Atteint"&&new Date(j.date)>=today);
-  const jalonsPasses=js.filter(j=>j.statut==="Atteint"||new Date(j.date)<today);
+  const jalonsFuturs=js.filter(j=>j.statut!=="Atteint"&&j.statut!=="Annulé"&&new Date(j.date)>=today);
+  const jalonsPasses=js.filter(j=>j.statut==="Atteint"||j.statut==="Annulé"||new Date(j.date)<today);
   // prévisions : actions ouvertes futures triées par échéance
   const previs=open.filter(a=>a.ech).sort((a,b)=>new Date(a.ech)-new Date(b.ech));
   // documents
@@ -2384,7 +2431,7 @@ function buildProjReport(p){
     }).join("")}</tbody></table>`;};
   const docsHtml=(allDocs.length?docCat("Livrable","Livrables")+docCat("Bon de livraison","Bons de livraison")+docCat("Commande","Commandes")+docCat("Libératoire","Fichiers libératoires"):`<p class="muted">Aucun document.</p>`);
 
-  const jalonsPassHtml=jalonsPasses.length?`<table><thead><tr><th>Jalon</th><th>Date</th><th>Statut</th></tr></thead><tbody>${jalonsPasses.map(j=>`<tr><td>${esc(j.label)}</td><td>${fr(j.date)}</td><td>${j.statut==="Atteint"?"Atteint":"En retard"}</td></tr>`).join("")}</tbody></table>`:"";
+  const jalonsPassHtml=jalonsPasses.length?`<table><thead><tr><th>Jalon</th><th>Date</th><th>Statut</th></tr></thead><tbody>${jalonsPasses.map(j=>`<tr><td>${esc(j.label)}</td><td>${fr(j.date)}</td><td>${jalonView(j).label}</td></tr>`).join("")}</tbody></table>`:"";
 
   // Risques & opportunités
   const roTable=(list,evtLbl,measLbl)=>list.length?`<table><thead><tr><th>${evtLbl}</th><th>Statut</th><th>${measLbl}</th><th>Crit.</th><th>Plan d'action</th><th>Resp.</th></tr></thead><tbody>${list.map(r=>`<tr><td>${esc(r.evt)}</td><td>${esc(r.statut||"—")}</td><td>${r.grav||"—"} × ${r.prob||"—"}</td><td>${r.crit||"—"}</td><td>${esc(r.action||"—")}</td><td>${esc(r.resp||"—")}</td></tr>`).join("")}</tbody></table>`:`<p class="muted">Aucun élément.</p>`;
@@ -2394,7 +2441,7 @@ function buildProjReport(p){
   const planByMile=js.map(j=>{
     const linked=acts.filter(a=>a.jalon===j.id).sort((a,b)=>new Date(a.deb||a.ech||0)-new Date(b.deb||b.ech||0));
     const rows=linked.length?linked.map(a=>`<tr><td style="padding-left:18px">↳ ${esc(a.title)}</td><td>${esc(a.resp)||"—"}</td><td>${a.statut}</td><td>${fr(a.deb||a.ech)} → ${fr(a.ech)}</td></tr>`).join(""):`<tr><td style="padding-left:18px" class="muted" colspan="4">Aucune action rattachée</td></tr>`;
-    return `<tr><td colspan="4" style="background:#f4f7fb;font-weight:600">◆ ${esc(j.label)} — ${fr(j.date)} (${j.statut==="Atteint"?"atteint":(daysTo(j.date)<0?"en retard":"à venir")})</td></tr>${rows}`;
+    return `<tr><td colspan="4" style="background:#f4f7fb;font-weight:600">◆ ${esc(j.label)} — ${fr(j.date)} (${jalonView(j).label.toLowerCase()})</td></tr>${rows}`;
   }).join("");
   const orphanActs=acts.filter(a=>!a.jalon||!js.some(j=>j.id===a.jalon)).sort((a,b)=>new Date(a.deb||a.ech||0)-new Date(b.deb||b.ech||0));
   const orphanHtml=orphanActs.length?`<tr><td colspan="4" style="background:#eef1f5;font-style:italic">Actions non rattachées</td></tr>${orphanActs.map(a=>`<tr><td style="padding-left:18px">${esc(a.title)}</td><td>${esc(a.resp)||"—"}</td><td>${a.statut}</td><td>${fr(a.deb||a.ech)} → ${fr(a.ech)}</td></tr>`).join("")}`:"";
