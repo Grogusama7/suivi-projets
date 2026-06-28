@@ -883,6 +883,10 @@ function cascadeSize(id,seen){seen=seen||new Set();let n=0;actions.forEach(x=>{i
 function isCriticalLate(a){if(a.statut==="Fait")return false;const d=daysTo(a.ech);return d!==null&&d<0&&blocksCount(a.id)>0;}
 // jours de glissement entre l'échéance d'origine et l'échéance actuelle (>0 = repoussé)
 function replanDays(a){if(!a.echOrig||!a.ech||a.echOrig===a.ech)return 0;const o=new Date(a.echOrig),c=new Date(a.ech);return Math.round((c-o)/864e5);}
+// une action ouverte est « en retard » si son échéance actuelle est dépassée OU si elle a été replanifiée plus tard (date initiale non tenue)
+function isLate(a){if(a.statut==="Fait")return false;const d=daysTo(a.ech);return (d!==null&&d<0)||replanDays(a)>0;}
+// une action terminée a-t-elle été livrée après son échéance initiale ? (réelle > échéance d'origine)
+function doneLate(a){if(a.statut!=="Fait"||!a.dateReelle)return false;const ref=a.echOrig||a.ech;return ref?new Date(a.dateReelle)>new Date(ref):false;}
 // OTD : sur les actions terminées ayant une date réelle ET une échéance contractuelle, part livrée à temps (réelle <= contractuelle)
 function computeOTD(p){
   const done=actions.filter(a=>a.projet===p&&a.statut==="Fait"&&a.dateReelle&&(a.echOrig||a.ech));
@@ -936,7 +940,7 @@ function render(){
     if(tri==="prio")return PRIO_ORDER[a.prio]-PRIO_ORDER[b.prio];if(tri==="projet")return a.projet.localeCompare(b.projet);const da=a.ech?new Date(a.ech):new Date(8e15),db=b.ech?new Date(b.ech):new Date(8e15);return da-db;});
   const _col=collapseSeries(arr);arr=_col.list;const restBySerie=_col.restBySerie;
   const open=actions.filter(a=>a.statut!=="Fait");
-  const late=open.filter(a=>{const d=daysTo(a.ech);return d!==null&&d<0});
+  const late=open.filter(isLate);
   const soon=open.filter(a=>{const d=daysTo(a.ech);return d!==null&&d>=0&&d<=3});
   const blk=open.filter(a=>a.statut==="Bloqué");
   const critical=open.filter(a=>isCriticalLate(a));
@@ -951,13 +955,18 @@ function render(){
   if(!arr.length){list.innerHTML='<div class="empty">Aucune action ne correspond.</div>';return}
   const sClass={"À faire":"s-afaire","En cours":"s-encours","Bloqué":"s-bloque","Fait":"s-fait"};
   list.innerHTML=arr.map(a=>{
-    const d=daysTo(a.ech);let echTag="";
-    if(a.ech&&a.statut!=="Fait"){if(d<0)echTag=`<span class="tag late">Retard ${-d} j</span>`;else if(d<=3)echTag=`<span class="tag soon">J-${d}</span>`}
+    const d=daysTo(a.ech);const rd=replanDays(a);let echTag="";
+    if(a.statut!=="Fait"){
+      if(a.ech&&d<0)echTag=`<span class="tag late">Retard ${-d} j</span>`;
+      else if(rd>0)echTag=`<span class="tag late">En retard</span>`;
+      else if(a.ech&&d<=3)echTag=`<span class="tag soon">J-${d}</span>`;
+    }
+    let doneTag="";
+    if(a.statut==="Fait"&&a.dateReelle){const dl=doneLate(a);doneTag=`<span class="tag ${dl?'late':'s-fait'}" title="${dl?'Terminé après l’échéance initiale ('+new Date(a.echOrig||a.ech).toLocaleDateString('fr-FR')+')':'Terminé dans les temps'}">✓ réalisé le ${new Date(a.dateReelle).toLocaleDateString('fr-FR')}${dl?' · en retard':''}</span>`;}
     const echTxt=a.ech?new Date(a.ech).toLocaleDateString("fr-FR"):"—";
     const depA=a.dep?actions.find(x=>x.id===a.dep):null;
     const depTag=depA?`<span class="tag dep">↳ après : ${esc(depA.title.slice(0,30))}</span>`:"";
     const recTag=a.serie?`<span class="tag rec" title="Prochaine occurrence d'une série récurrente">↻ récurrente${restBySerie[a.serie]>1?` · ${restBySerie[a.serie]} à venir`:""}</span>`:"";
-    const rd=replanDays(a);
     const reuTag=a.reunion?`<span class="tag reu">📅 réunion</span>`:"";
     const replanTag=(rd>0&&a.statut!=="Fait")?`<span class="tag replan" title="Échéance repoussée de ${rd} j (initiale : ${new Date(a.echOrig).toLocaleDateString("fr-FR")})">⟳ replanifié +${rd} j</span>`:"";
     const nbBlock=blocksCount(a.id);
@@ -971,7 +980,7 @@ function render(){
     return `<div class="action prio-${a.prio} ${a.statut==="Fait"?'done':''}">
       <div><div class="title">${esc(a.title)}</div>
         <div class="meta"><span>▸ ${esc(a.projet)}</span><span>👤 ${esc(a.resp)||"—"}</span><span>📅 ${echTxt}</span>
-          <span class="tag ${sClass[a.statut]}">${a.statut}</span><span>${a.prio}</span>${reuTag}${echTag}${replanTag}${depTag}${waitTag}${blockTag}${recTag}${a.imgs&&a.imgs.length?`<span>🖼 ${a.imgs.length}</span>`:""}</div>
+          <span class="tag ${sClass[a.statut]}">${a.statut}</span><span>${a.prio}</span>${reuTag}${echTag}${doneTag}${replanTag}${depTag}${waitTag}${blockTag}${recTag}${a.imgs&&a.imgs.length?`<span>🖼 ${a.imgs.length}</span>`:""}</div>
         ${a.notes?`<div class="notes">${esc(a.notes)}</div>`:""}${subsHtml}${imgHtml}</div>
       <div class="acts">
         <button class="iconbtn" title="Basculer fait" onclick="toggleDone('${a.id}')">✓</button>
@@ -983,7 +992,7 @@ function gotoProjet(p){switchView('actions');document.getElementById('fProjet').
 // santé projet : rouge si jalon dépassé non atteint OU >1 action en retard OU bloquante critique ; orange si 1 retard ou échéance jalon <7j ; vert sinon
 function projHealth(p){
   const open=actions.filter(a=>a.projet===p&&a.statut!=="Fait");
-  const late=open.filter(a=>{const d=daysTo(a.ech);return d!==null&&d<0});
+  const late=open.filter(isLate);
   const critical=open.filter(a=>isCriticalLate(a));
   const js=jalons.filter(j=>j.projet===p);
   const jalonLate=js.some(j=>j.statut!=="Atteint"&&j.statut!=="Annulé"&&daysTo(j.date)<0);
@@ -1004,7 +1013,7 @@ function renderProjOverview(){
     const acts=actions.filter(a=>a.projet===p);
     const done=acts.filter(a=>a.statut==="Fait").length,total=acts.length,pct=total?Math.round(done/total*100):0;
     const open=acts.filter(a=>a.statut!=="Fait");
-    const late=open.filter(a=>{const d=daysTo(a.ech);return d!==null&&d<0}).length;
+    const late=open.filter(isLate).length;
     const blk=open.filter(a=>a.statut==="Bloqué").length;
     const enc=open.filter(a=>a.statut==="En cours").length;
     const nextA=open.filter(a=>a.ech).sort((a,b)=>new Date(a.ech)-new Date(b.ech))[0];
@@ -1142,7 +1151,7 @@ function renderProjet(){
   const open=acts.filter(a=>a.statut!=="Fait");
   const done=acts.filter(a=>a.statut==="Fait").length;
   const pct=acts.length?Math.round(done/acts.length*100):0;
-  const late=open.filter(a=>{const d=daysTo(a.ech);return d!==null&&d<0}).length;
+  const late=open.filter(isLate).length;
   const blk=open.filter(a=>a.statut==="Bloqué").length;
   const h=projHealth(p);
   const js=jalons.filter(j=>j.projet===p).sort((a,b)=>new Date(a.date)-new Date(b.date));
@@ -1206,7 +1215,7 @@ function renderProjet(){
 
   // actions associées
   const actHtml=open.length?open.sort((a,b)=>PRIO_ORDER[a.prio]-PRIO_ORDER[b.prio]||new Date(a.ech||8e15)-new Date(b.ech||8e15)).map(a=>{
-    const d=daysTo(a.ech);const retard=(d!==null&&d<0)?` <span class="tag late">retard ${-d}j</span>`:"";
+    const d=daysTo(a.ech);const retard=(d!==null&&d<0)?` <span class="tag late">retard ${-d}j</span>`:(replanDays(a)>0?` <span class="tag late">en retard</span>`:"");
     return `<tr onclick="openModal('${a.id}')" style="cursor:pointer"><td>${esc(a.title)}</td><td>${esc(a.resp)||"—"}</td><td>${a.prio}</td><td><span class="tag ${sClass[a.statut]}">${a.statut}</span></td><td>${fr(a.ech)}${retard}</td></tr>`;
   }).join(""):`<tr><td colspan="5" class="muted">Aucune action ouverte.</td></tr>`;
 
@@ -1558,7 +1567,7 @@ function renderCharge(){
   const maxLoad=Math.max(...people.map(p=>map[p].length));
   cont.innerHTML='<div class="pgrid">'+people.map(p=>{
     const items=map[p];
-    const late=items.filter(a=>{const d=daysTo(a.ech);return d!==null&&d<0}).length;
+    const late=items.filter(isLate).length;
     const week=items.filter(a=>{const d=daysTo(a.ech);return d!==null&&d>=0&&d<=7}).length;
     const byPrio=["Critique","Haute","Moyenne","Basse"].map(pr=>items.filter(a=>a.prio===pr).length);
     const blk=items.filter(a=>a.statut==="Bloqué").length;
@@ -1934,7 +1943,7 @@ function renderKanban(){
     const body=collapsed?'<p class="hint" style="margin:0;cursor:pointer" onclick="toggleKanbanDone()">Repliées — clic pour afficher</p>'
       : items.map(a=>`<div class="kcard prio-${a.prio}" draggable="true" ondragstart="dragCard(event,'${a.id}')" ondragend="this.classList.remove('dragging')" onclick="openModal('${a.id}')">
         <div class="kt">${esc(a.title)}${a.serie?` <span class="tag rec" style="font-size:9px">↻${restBySerie[a.serie]>1?' '+restBySerie[a.serie]:''}</span>`:''}</div>
-        <div class="km"><span>${esc(a.projet.split('·')[0])}</span><span>${esc(a.resp)||'—'}</span>${a.ech?`<span>${new Date(a.ech).toLocaleDateString("fr-FR")}</span>`:''}${a.imgs&&a.imgs.length?`<span>🖼${a.imgs.length}</span>`:''}</div>
+        <div class="km"><span>${esc(a.projet.split('·')[0])}</span><span>${esc(a.resp)||'—'}</span>${a.ech?`<span>${new Date(a.ech).toLocaleDateString("fr-FR")}</span>`:''}${isLate(a)?`<span class="tag late" style="font-size:9px">retard</span>`:''}${a.imgs&&a.imgs.length?`<span>🖼${a.imgs.length}</span>`:''}</div>
       </div>`).join("");
     return `<div class="kcol" data-st="${st}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="dropCard(event,'${st}')">
       ${head}${body}</div>`;}).join("");}
@@ -2302,7 +2311,7 @@ function buildReport(){
   const now=new Date();
   const fr=d=>d?new Date(d).toLocaleDateString("fr-FR"):"—";
   const openAll=actions.filter(a=>a.statut!=="Fait");
-  const lateAll=openAll.filter(a=>{const d=daysTo(a.ech);return d!==null&&d<0});
+  const lateAll=openAll.filter(isLate);
   const blkAll=openAll.filter(a=>a.statut==="Bloqué");
   // synthèse par projet
   const projBlocks=projets.map(p=>{
@@ -2310,14 +2319,14 @@ function buildReport(){
     if(!acts.length&&!jalons.filter(j=>j.projet===p).length)return"";
     const done=acts.filter(a=>a.statut==="Fait").length,total=acts.length,pct=total?Math.round(done/total*100):0;
     const open=acts.filter(a=>a.statut!=="Fait");
-    const late=open.filter(a=>{const d=daysTo(a.ech);return d!==null&&d<0});
+    const late=open.filter(isLate);
     const blk=open.filter(a=>a.statut==="Bloqué");
     const js=jalons.filter(j=>j.projet===p).sort((a,b)=>new Date(a.date)-new Date(b.date));
     // top actions ouvertes par priorité puis échéance
     const top=open.slice().sort((a,b)=>PRIO_ORDER[a.prio]-PRIO_ORDER[b.prio]||(new Date(a.ech||8e15)-new Date(b.ech||8e15))).slice(0,8);
     const milesRows=js.map(j=>{const st=jalonView(j).label;
       return `<tr><td>${esc(j.label)}</td><td>${fr(j.date)}</td><td>${st}</td></tr>`;}).join("")||`<tr><td colspan="3" class="muted">Aucun jalon</td></tr>`;
-    const actRows=top.map(a=>{const d=daysTo(a.ech);const retard=(d!==null&&d<0)?` (retard ${-d} j)`:"";
+    const actRows=top.map(a=>{const d=daysTo(a.ech);const retard=(d!==null&&d<0)?` (retard ${-d} j)`:(replanDays(a)>0?` (en retard)`:"");
       return `<tr><td>${esc(a.title)}</td><td>${esc(a.resp)||"—"}</td><td>${a.prio}</td><td>${a.statut}</td><td>${fr(a.ech)}${retard}</td></tr>`;}).join("")||`<tr><td colspan="5" class="muted">Aucune action ouverte</td></tr>`;
     return `<section class="proj">
       <h2>${esc(p)}</h2>
@@ -2383,7 +2392,7 @@ function buildProjReport(p){
   const open=acts.filter(a=>a.statut!=="Fait");
   const done=acts.filter(a=>a.statut==="Fait").length;
   const pct=acts.length?Math.round(done/acts.length*100):0;
-  const late=open.filter(a=>{const d=daysTo(a.ech);return d!==null&&d<0});
+  const late=open.filter(isLate);
   const blk=open.filter(a=>a.statut==="Bloqué");
   const h=projHealth(p);
   const js=jalons.filter(j=>j.projet===p).sort((a,b)=>new Date(a.date)-new Date(b.date));
@@ -2422,7 +2431,7 @@ function buildProjReport(p){
 
   const jalonsFutHtml=jalonsFuturs.length?`<table><thead><tr><th>Jalon</th><th>Date prévue</th><th>Dans</th></tr></thead><tbody>${jalonsFuturs.map(j=>{const d=daysTo(j.date);return `<tr><td>${esc(j.label)}</td><td>${fr(j.date)}</td><td>${d===0?"aujourd'hui":"J-"+d}</td></tr>`;}).join("")}</tbody></table>`:`<p class="muted">Aucune livraison / jalon à venir.</p>`;
 
-  const previsHtml=previs.length?`<table><thead><tr><th>Action</th><th>Resp.</th><th>Prio.</th><th>Statut</th><th>Échéance</th></tr></thead><tbody>${previs.map(a=>{const d=daysTo(a.ech);const r=d<0?` (retard ${-d}j)`:"";return `<tr><td>${esc(a.title)}</td><td>${esc(a.resp)||"—"}</td><td>${a.prio}</td><td>${a.statut}</td><td>${fr(a.ech)}${r}</td></tr>`;}).join("")}</tbody></table>`:`<p class="muted">Aucune échéance planifiée.</p>`;
+  const previsHtml=previs.length?`<table><thead><tr><th>Action</th><th>Resp.</th><th>Prio.</th><th>Statut</th><th>Échéance</th></tr></thead><tbody>${previs.map(a=>{const d=daysTo(a.ech);const r=d<0?` (retard ${-d}j)`:(replanDays(a)>0?` (en retard)`:"");return `<tr><td>${esc(a.title)}</td><td>${esc(a.resp)||"—"}</td><td>${a.prio}</td><td>${a.statut}</td><td>${fr(a.ech)}${r}</td></tr>`;}).join("")}</tbody></table>`:`<p class="muted">Aucune échéance planifiée.</p>`;
 
   const docCat=(cat,titre)=>{const l=allDocs.filter(d=>d.cat===cat);if(!l.length)return"";
     return `<h3>${titre} (${l.length})</h3><table><thead><tr><th>Libellé</th><th>N°</th><th>Date</th><th>Statut</th><th>Détail</th></tr></thead><tbody>${l.map(d=>{
