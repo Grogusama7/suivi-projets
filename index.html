@@ -338,6 +338,39 @@ footer{text-align:center;font-family:var(--mono);font-size:11px;color:var(--ink-
 .loadbar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:#e8ecf1;margin-bottom:10px}
 .loadbar .lb{display:block;height:100%}
 .lb-Critique{background:var(--p-crit)}.lb-Haute{background:var(--p-haute)}.lb-Moyenne{background:var(--p-moy)}.lb-Basse{background:var(--p-basse)}
+/* ===== Responsive / multi-appareils (Mac fenêtré, iPad, mobile, tactile) ===== */
+html{-webkit-text-size-adjust:100%}
+body{overflow-x:hidden}
+img{max-width:100%;height:auto}
+/* le calendrier Semaine/Jour défile horizontalement plutôt que de casser la page */
+#calTime{overflow-x:auto;-webkit-overflow-scrolling:touch}
+@media(max-width:1024px){
+  .kanban{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:760px){
+  .tgrid-week{min-width:600px}
+}
+@media(max-width:620px){
+  header{padding:10px 14px;gap:8px;flex-wrap:wrap}
+  header h1{font-size:16px}
+  nav{padding:0 6px}
+  nav button{padding:11px 10px;font-size:12px}
+  .wrap{padding:14px 12px 64px}
+  .dash{grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:10px}
+  .card .n{font-size:22px}
+  .card{padding:11px 12px}
+  .kanban{grid-template-columns:1fr}
+  .grid2,.grid3{grid-template-columns:1fr}
+  .pgrid{grid-template-columns:1fr}
+  .cal-head{flex-wrap:wrap;gap:8px}
+  .cal-head h3{flex:1 1 100%;order:-1;min-width:0;text-align:left;font-size:16px}
+  .cal-cell{min-height:58px;font-size:10px;padding:4px}
+  .modal{padding:18px 16px}
+  .toolbar{gap:8px}
+  .toolbar input[type=search]{min-width:0;flex:1 1 100%}
+  /* éviter le zoom auto iOS au focus d'un champ (police >=16px) */
+  .wrap input,.wrap select,.wrap textarea,.modal input,.modal select,.modal textarea{font-size:16px}
+}
 </style>
 </head>
 <body>
@@ -1608,6 +1641,7 @@ function delAction(id){
   }
   if(confirm("Supprimer cette action ?")){actions=actions.filter(x=>x.id!==id);actions.forEach(x=>{if(x.dep===id)x.dep=""});save();render();refreshActive();}
 }
+let preDate="",preHeure="",preDuree="";  // pré-remplissage depuis le calendrier (déclarés pour éviter un ReferenceError si "+ Nouvelle action" est cliqué avant tout usage du calendrier)
 function openModal(id){
   document.getElementById("overlay").classList.add("open");
   document.getElementById("mId").value=id||"";fillSelects();
@@ -1994,7 +2028,7 @@ function renderTime(nDays){
     document.getElementById("calLabel").textContent=`${base.toLocaleDateString("fr-FR",{day:"numeric",month:"short"})} – ${end.toLocaleDateString("fr-FR",{day:"numeric",month:"short",year:"numeric"})}`;}
   else document.getElementById("calLabel").textContent=calDate.toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
   const todayStr=ymd(new Date());
-  let grid=`<div class="tgrid" style="grid-template-columns:54px repeat(${nDays},1fr)">`;
+  let grid=`<div class="tgrid${nDays===7?' tgrid-week':''}" style="grid-template-columns:54px repeat(${nDays},1fr)">`;
   grid+=`<div class="tg-corner"></div>`;
   dayDates.forEach(d=>{const ds=ymd(d);grid+=`<div class="tg-dayhead ${ds===todayStr?'today':''}"><div class="dow">${d.toLocaleDateString("fr-FR",{weekday:"short"})}</div><div class="dnum">${d.getDate()}</div></div>`;});
   grid+=`<div class="tg-allday-lbl">jour</div>`;
